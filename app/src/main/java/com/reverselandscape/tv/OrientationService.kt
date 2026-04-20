@@ -97,12 +97,15 @@ class OrientationService : Service() {
         try {
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-            // Create an invisible 0x0 view
-            overlayView = View(this)
+            // Create a minimal view (1x1 pixel, positioned off-screen)
+            overlayView = View(this).apply {
+                // Make it transparent so user doesn't see it
+                alpha = 0f
+            }
 
             val layoutParams = WindowManager.LayoutParams(
-                0, // Width: 0 pixels
-                0, // Height: 0 pixels
+                WindowManager.LayoutParams.MATCH_PARENT, // Full width
+                WindowManager.LayoutParams.MATCH_PARENT, // Full height
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 } else {
@@ -111,7 +114,9 @@ class OrientationService : Service() {
                 },
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                        WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
