@@ -11,8 +11,10 @@
     <string name="grant_permission">Grant Permission</string>
     <string name="start_service">Start Service</string>
     <string name="stop_service">Stop Service</string>
+    <string name="reset_rotation">Reset to Normal Rotation</string>
     <string name="status_running">Status: Running</string>
     <string name="status_stopped">Status: Stopped</string>
     <string name="auto_start_enabled">Auto-start on boot enabled</string>
+    <string name="reset_info">Use Reset button if rotation persists after uninstall</string>
     <string name="accessibility_service_description">Allows this app to control screen rotation. This service forces the screen to reverse landscape orientation system-wide. No data is collected or monitored.</string>
 </resources>
