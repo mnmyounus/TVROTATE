@@ -22,6 +22,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
+    private lateinit var resetButton: Button
 
     private val writeSettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -53,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         startButton = findViewById(R.id.startButton)
         stopButton = findViewById(R.id.stopButton)
+        resetButton = findViewById(R.id.resetButton)
 
         startButton.setOnClickListener {
             checkPermissionsAndStart()
@@ -60,6 +62,10 @@ class MainActivity : AppCompatActivity() {
 
         stopButton.setOnClickListener {
             disableRotation()
+        }
+
+        resetButton.setOnClickListener {
+            resetToNormalRotation()
         }
 
         updateServiceStatus()
@@ -153,12 +159,55 @@ class MainActivity : AppCompatActivity() {
                     "1. Go to Settings → Accessibility\n" +
                     "2. Find 'Reverse Landscape TV'\n" +
                     "3. Turn it OFF\n\n" +
-                    "Or restore auto-rotation in Display settings.")
+                    "Or use the 'Reset to Normal' button below.")
             .setPositiveButton("Open Settings") { _, _ ->
                 openAccessibilitySettings()
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun resetToNormalRotation() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset to Normal Rotation")
+            .setMessage("This will restore your TV to normal landscape orientation and enable auto-rotation.\n\nDo you want to continue?")
+            .setPositiveButton("Reset") { _, _ ->
+                performReset()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performReset() {
+        try {
+            // Check if we have permission to write settings
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.System.canWrite(this)) {
+                    Toast.makeText(this, "Need Write Settings permission first", Toast.LENGTH_LONG).show()
+                    requestWriteSettingsPermission()
+                    return
+                }
+            }
+
+            // Enable auto-rotation
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.ACCELEROMETER_ROTATION,
+                1
+            )
+
+            // Set to normal landscape (value 1)
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.USER_ROTATION,
+                1 // Normal landscape
+            )
+
+            Toast.makeText(this, "✓ Rotation reset to normal landscape", Toast.LENGTH_LONG).show()
+            
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error resetting rotation: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showPermissionDeniedDialog(message: String) {
