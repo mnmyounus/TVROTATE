@@ -1,18 +1,20 @@
 package com.reverselandscape.tv
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
@@ -21,24 +23,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
 
-    private val overlayPermissionLauncher = registerForActivityResult(
+    private val writeSettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        if (Settings.canDrawOverlays(this)) {
-            checkNotificationPermissionAndStart()
-        } else {
-            showPermissionDeniedDialog()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Settings.System.canWrite(this)) {
+                checkAccessibilityAndStart()
+            } else {
+                showPermissionDeniedDialog("Write Settings permission is required")
+            }
         }
     }
 
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            startOrientationService()
+    private val accessibilityLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (isAccessibilityServiceEnabled()) {
+            Toast.makeText(this, "Accessibility Service enabled! Rotation active.", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Notification permission denied", Toast.LENGTH_SHORT).show()
+            showPermissionDeniedDialog("Accessibility Service is required for rotation control")
         }
+        updateServiceStatus()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,7 +59,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         stopButton.setOnClickListener {
-            stopOrientationService()
+            disableRotation()
         }
 
         updateServiceStatus()
@@ -66,87 +71,109 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissionsAndStart() {
-        when {
-            !Settings.canDrawOverlays(this) -> {
-                showOverlayPermissionDialog()
-            }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(
-                        this,
-                        android.Manifest.permission.POST_NOTIFICATIONS
-                    ) != PackageManager.PERMISSION_GRANTED -> {
-                checkNotificationPermissionAndStart()
-            }
-            else -> {
-                startOrientationService()
-            }
-        }
-    }
-
-    private fun showOverlayPermissionDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.permission_required))
-            .setMessage(getString(R.string.permission_message))
-            .setPositiveButton(getString(R.string.grant_permission)) { _, _ ->
-                requestOverlayPermission()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun requestOverlayPermission() {
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:$packageName")
-        )
-        overlayPermissionLauncher.launch(intent)
-    }
-
-    private fun checkNotificationPermissionAndStart() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        // Check WRITE_SETTINGS permission first
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.System.canWrite(this)) {
+                showWriteSettingsDialog()
                 return
             }
         }
-        startOrientationService()
+
+        // Then check Accessibility Service
+        checkAccessibilityAndStart()
     }
 
-    private fun showPermissionDeniedDialog() {
+    private fun showWriteSettingsDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Permission Denied")
-            .setMessage("The app cannot function without overlay permission. Please grant it in settings.")
-            .setPositiveButton("Settings") { _, _ ->
-                requestOverlayPermission()
+            .setTitle("Permission Required")
+            .setMessage("This app needs permission to modify system settings to control screen rotation.\n\nPlease enable 'Modify system settings' on the next screen.")
+            .setPositiveButton("Grant Permission") { _, _ ->
+                requestWriteSettingsPermission()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun startOrientationService() {
-        val serviceIntent = Intent(this, OrientationService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
+    private fun requestWriteSettingsPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                Uri.parse("package:$packageName")
+            )
+            writeSettingsLauncher.launch(intent)
         }
-        updateServiceStatus()
-        Toast.makeText(this, "Service started", Toast.LENGTH_SHORT).show()
     }
 
-    private fun stopOrientationService() {
-        val serviceIntent = Intent(this, OrientationService::class.java)
-        stopService(serviceIntent)
-        updateServiceStatus()
-        Toast.makeText(this, "Service stopped", Toast.LENGTH_SHORT).show()
+    private fun checkAccessibilityAndStart() {
+        if (!isAccessibilityServiceEnabled()) {
+            showAccessibilityDialog()
+        } else {
+            Toast.makeText(this, "Rotation is active!", Toast.LENGTH_SHORT).show()
+            updateServiceStatus()
+        }
+    }
+
+    private fun showAccessibilityDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Enable Accessibility Service")
+            .setMessage("To control screen rotation, please enable the Accessibility Service:\n\n" +
+                    "1. Tap 'Open Settings'\n" +
+                    "2. Find 'Reverse Landscape TV'\n" +
+                    "3. Turn it ON\n" +
+                    "4. Confirm the permission")
+            .setPositiveButton("Open Settings") { _, _ ->
+                openAccessibilitySettings()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openAccessibilitySettings() {
+        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        accessibilityLauncher.launch(intent)
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        
+        val expectedComponentName = "${packageName}/${RotationAccessibilityService::class.java.name}"
+        
+        return enabledServices.any { service ->
+            service.resolveInfo.serviceInfo.let { 
+                "${it.packageName}/${it.name}" == expectedComponentName
+            }
+        }
+    }
+
+    private fun disableRotation() {
+        AlertDialog.Builder(this)
+            .setTitle("Disable Rotation Control")
+            .setMessage("To disable rotation control:\n\n" +
+                    "1. Go to Settings → Accessibility\n" +
+                    "2. Find 'Reverse Landscape TV'\n" +
+                    "3. Turn it OFF\n\n" +
+                    "Or restore auto-rotation in Display settings.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                openAccessibilitySettings()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPermissionDeniedDialog(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Permission Denied")
+            .setMessage(message)
+            .setPositiveButton("Try Again") { _, _ ->
+                checkPermissionsAndStart()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun updateServiceStatus() {
-        val isRunning = OrientationService.isServiceRunning
+        val isRunning = isAccessibilityServiceEnabled()
         statusText.text = if (isRunning) {
             getString(R.string.status_running)
         } else {
