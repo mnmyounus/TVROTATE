@@ -3,7 +3,6 @@ package com.reverselandscape.tv
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,14 +14,14 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
-    private lateinit var startButton: Button
-    private lateinit var stopButton: Button
-    private lateinit var resetButton: Button
+    private lateinit var creatorText: TextView
+    private lateinit var rotate0Button: Button
+    private lateinit var rotate180Button: Button
+    private lateinit var factoryResetButton: Button
 
     private val writeSettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -39,11 +38,6 @@ class MainActivity : AppCompatActivity() {
     private val accessibilityLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        if (isAccessibilityServiceEnabled()) {
-            Toast.makeText(this, "Accessibility Service enabled! Rotation active.", Toast.LENGTH_LONG).show()
-        } else {
-            showPermissionDeniedDialog("Accessibility Service is required for rotation control")
-        }
         updateServiceStatus()
     }
 
@@ -52,20 +46,21 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.statusText)
-        startButton = findViewById(R.id.startButton)
-        stopButton = findViewById(R.id.stopButton)
-        resetButton = findViewById(R.id.resetButton)
+        creatorText = findViewById(R.id.creatorText)
+        rotate0Button = findViewById(R.id.rotate0Button)
+        rotate180Button = findViewById(R.id.rotate180Button)
+        factoryResetButton = findViewById(R.id.factoryResetButton)
 
-        startButton.setOnClickListener {
-            checkPermissionsAndStart()
+        rotate0Button.setOnClickListener {
+            applyRotation(RotationAccessibilityService.MODE_NORMAL, "Normal (0°)")
         }
 
-        stopButton.setOnClickListener {
-            disableRotation()
+        rotate180Button.setOnClickListener {
+            applyRotation(RotationAccessibilityService.MODE_ROTATE_180, "Rotate 180°")
         }
 
-        resetButton.setOnClickListener {
-            resetToNormalRotation()
+        factoryResetButton.setOnClickListener {
+            performFactoryReset()
         }
 
         updateServiceStatus()
@@ -76,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         updateServiceStatus()
     }
 
-    private fun checkPermissionsAndStart() {
+    private fun applyRotation(mode: Int, modeName: String) {
         // Check WRITE_SETTINGS permission first
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.System.canWrite(this)) {
@@ -85,8 +80,96 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Then check Accessibility Service
-        checkAccessibilityAndStart()
+        // Check Accessibility Service
+        if (!isAccessibilityServiceEnabled()) {
+            showAccessibilityDialog()
+            return
+        }
+
+        // Apply rotation via system settings directly
+        try {
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.ACCELEROMETER_ROTATION,
+                0 // Disable auto-rotate
+            )
+
+            val rotationValue = when (mode) {
+                RotationAccessibilityService.MODE_ROTATE_180 -> 2 // 180 degrees
+                else -> 1 // Normal landscape (90 degrees)
+            }
+
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.USER_ROTATION,
+                rotationValue
+            )
+
+            // Save mode to preferences
+            getSharedPreferences("rotation_prefs_mnm", Context.MODE_PRIVATE)
+                .edit()
+                .putInt("current_mode", mode)
+                .apply()
+
+            Toast.makeText(this, "✓ Applied: $modeName", Toast.LENGTH_SHORT).show()
+            updateServiceStatus()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun performFactoryReset() {
+        AlertDialog.Builder(this)
+            .setTitle("Factory Reset")
+            .setMessage("This will:\n\n" +
+                    "✓ Reset rotation to default\n" +
+                    "✓ Clear all saved settings\n" +
+                    "✓ Restore original configuration\n\n" +
+                    "Everything created by this app will be removed.\n\n" +
+                    "Continue?")
+            .setPositiveButton("Factory Reset") { _, _ ->
+                executeFactoryReset()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun executeFactoryReset() {
+        try {
+            // Check if we have permission to write settings
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.System.canWrite(this)) {
+                    Toast.makeText(this, "Need Write Settings permission first", Toast.LENGTH_LONG).show()
+                    requestWriteSettingsPermission()
+                    return
+                }
+            }
+
+            // Reset to default settings
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.ACCELEROMETER_ROTATION,
+                0 // Keep auto-rotate off for consistency
+            )
+
+            Settings.System.putInt(
+                contentResolver,
+                Settings.System.USER_ROTATION,
+                1 // Normal landscape
+            )
+
+            // Clear SharedPreferences
+            getSharedPreferences("rotation_prefs_mnm", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .apply()
+
+            Toast.makeText(this, "✓ Factory Reset Complete!\nRotation restored to default", Toast.LENGTH_LONG).show()
+            updateServiceStatus()
+            
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showWriteSettingsDialog() {
@@ -114,7 +197,7 @@ class MainActivity : AppCompatActivity() {
         if (!isAccessibilityServiceEnabled()) {
             showAccessibilityDialog()
         } else {
-            Toast.makeText(this, "Rotation is active!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Rotation service is ready!", Toast.LENGTH_SHORT).show()
             updateServiceStatus()
         }
     }
@@ -152,70 +235,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun disableRotation() {
-        AlertDialog.Builder(this)
-            .setTitle("Disable Rotation Control")
-            .setMessage("To disable rotation control:\n\n" +
-                    "1. Go to Settings → Accessibility\n" +
-                    "2. Find 'Reverse Landscape TV'\n" +
-                    "3. Turn it OFF\n\n" +
-                    "Or use the 'Reset to Normal' button below.")
-            .setPositiveButton("Open Settings") { _, _ ->
-                openAccessibilitySettings()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun resetToNormalRotation() {
-        AlertDialog.Builder(this)
-            .setTitle("Reset to Normal Rotation")
-            .setMessage("This will restore your TV to normal landscape orientation and enable auto-rotation.\n\nDo you want to continue?")
-            .setPositiveButton("Reset") { _, _ ->
-                performReset()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun performReset() {
-        try {
-            // Check if we have permission to write settings
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (!Settings.System.canWrite(this)) {
-                    Toast.makeText(this, "Need Write Settings permission first", Toast.LENGTH_LONG).show()
-                    requestWriteSettingsPermission()
-                    return
-                }
-            }
-
-            // Enable auto-rotation
-            Settings.System.putInt(
-                contentResolver,
-                Settings.System.ACCELEROMETER_ROTATION,
-                1
-            )
-
-            // Set to normal landscape (value 1)
-            Settings.System.putInt(
-                contentResolver,
-                Settings.System.USER_ROTATION,
-                1 // Normal landscape
-            )
-
-            Toast.makeText(this, "✓ Rotation reset to normal landscape", Toast.LENGTH_LONG).show()
-            
-        } catch (e: Exception) {
-            Toast.makeText(this, "Error resetting rotation: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
     private fun showPermissionDeniedDialog(message: String) {
         AlertDialog.Builder(this)
             .setTitle("Permission Denied")
             .setMessage(message)
             .setPositiveButton("Try Again") { _, _ ->
-                checkPermissionsAndStart()
+                checkAccessibilityAndStart()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -223,13 +248,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateServiceStatus() {
         val isRunning = isAccessibilityServiceEnabled()
+        val prefs = getSharedPreferences("rotation_prefs_mnm", Context.MODE_PRIVATE)
+        val currentMode = prefs.getInt("current_mode", RotationAccessibilityService.MODE_NORMAL)
+        
         statusText.text = if (isRunning) {
-            getString(R.string.status_running)
+            val modeText = when (currentMode) {
+                RotationAccessibilityService.MODE_ROTATE_180 -> "180°"
+                else -> "Normal"
+            }
+            "Status: Active ($modeText)"
         } else {
-            getString(R.string.status_stopped)
+            "Status: Not Active"
         }
         
-        startButton.isEnabled = !isRunning
-        stopButton.isEnabled = isRunning
+        // Enable buttons only when service is active
+        rotate0Button.isEnabled = isRunning
+        rotate180Button.isEnabled = isRunning
+        factoryResetButton.isEnabled = true // Always enabled
+        
+        // Visual feedback for active mode
+        if (isRunning) {
+            val isNormalMode = currentMode == RotationAccessibilityService.MODE_NORMAL
+            val is180Mode = currentMode == RotationAccessibilityService.MODE_ROTATE_180
+            
+            rotate0Button.alpha = if (isNormalMode) 1.0f else 0.6f
+            rotate180Button.alpha = if (is180Mode) 1.0f else 0.6f
+        } else {
+            rotate0Button.alpha = 0.5f
+            rotate180Button.alpha = 0.5f
+        }
     }
 }
