@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Reverse Landscape TV</string>
+    <string name="app_name">Reverse Landscape TV | Y</string>
     <string name="service_running">Orientation service is active</string>
     <string name="notification_title">Reverse Landscape Active</string>
     <string name="notification_message">System orientation is forced to reverse landscape</string>
@@ -9,12 +9,11 @@
     <string name="permission_required">Overlay Permission Required</string>
     <string name="permission_message">This app needs overlay permission to force orientation. Please grant it in settings.</string>
     <string name="grant_permission">Grant Permission</string>
-    <string name="start_service">Start Service</string>
-    <string name="stop_service">Stop Service</string>
-    <string name="reset_rotation">Reset to Normal Rotation</string>
+    <string name="rotate_normal">Normal (0°)</string>
+    <string name="rotate_180">Rotate 180°</string>
+    <string name="factory_reset">Factory Reset</string>
     <string name="status_running">Status: Running</string>
-    <string name="status_stopped">Status: Stopped</string>
-    <string name="auto_start_enabled">Auto-start on boot enabled</string>
-    <string name="reset_info">Use Reset button if rotation persists after uninstall</string>
-    <string name="accessibility_service_description">Allows this app to control screen rotation. This service forces the screen to reverse landscape orientation system-wide. No data is collected or monitored.</string>
+    <string name="status_stopped">Status: Not Active</string>
+    <string name="created_by">Created by MNM YOUNUS</string>
+    <string name="accessibility_service_description">Allows this app to control screen rotation. Forces screen to selected orientation. No data is collected. Created by MNM YOUNUS.</string>
 </resources>
